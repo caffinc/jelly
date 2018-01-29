@@ -9,4 +9,9 @@ public class DummyStuff implements Jellied {
     public String getSomeOtherThing() {
         return "SOME OTHER THING!";
     }
+
+    @Slice
+    public String someException() throws Exception {
+        throw new Exception("EHEHEHEH!");
+    }
 }
