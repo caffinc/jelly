@@ -1,4 +1,4 @@
-package com.caffinc.jelly;
+package com.caffinc.jelly.annotations;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
