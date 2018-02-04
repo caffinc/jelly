@@ -1,6 +1,7 @@
 package com.caffinc.jelly.test;
 
 import com.caffinc.jelly.core.Jelly;
+import com.caffinc.jelly.core.JellyConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,11 +15,11 @@ public class TestJelly {
         /*
         Initialize the daemon
          */
-        int port = 53559;
+        int port = 53558;
         if (args.length > 0) {
             port = Integer.parseInt(args[0]);
         }
-        Jelly.initialize(port, "0", Arrays.asList("http://localhost:53559/"));
+        Jelly.initialize(port, "0", Arrays.asList("http://localhost:53559/"), new JellyConfig());
 
         // Get the proxied object
         DummyStuff ds = new DummyStuff().getJelliedObject();

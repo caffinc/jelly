@@ -1,5 +1,7 @@
 package com.caffinc.jelly.core;
 
+import javax.annotation.CheckForNull;
+import javax.annotation.Nonnull;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -17,7 +19,7 @@ public class SimpleJellyRouter implements JellyRouter {
     }
 
     @Override
-    public void addSlice(SliceInfo sliceInfo) {
+    public void addSlice(@Nonnull SliceInfo sliceInfo) {
         if (!hosts.containsKey(sliceInfo.getVersionId())) {
             hosts.put(sliceInfo.getVersionId(), new ArrayList<>());
         }
@@ -25,7 +27,11 @@ public class SimpleJellyRouter implements JellyRouter {
     }
 
     @Override
+    @CheckForNull
     public String getSlice(String versionId, String className, String methodSignature) {
+        if (hosts.get(versionId).size() == 0){
+            return null;
+        }
         return hosts.get(versionId).get(random.nextInt(hosts.get(versionId).size()));
     }
 }

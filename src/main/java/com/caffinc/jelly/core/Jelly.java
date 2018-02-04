@@ -36,12 +36,13 @@ public class Jelly {
     private List<String> hostList;
     private Gson gson;
     private Server server;
+    private JellyConfig config;
 
-    public static void initialize(int port, String versionId, List<String> hostList) {
+    public static void initialize(int port, String versionId, List<String> hostList, JellyConfig config) {
         if (jelly != null) {
             throw new IllegalStateException("Already initialized");
         }
-        jelly = new Jelly(versionId, hostList);
+        jelly = new Jelly(versionId, hostList, config);
         try {
             jelly.server = new Api(port).setBaseUrl("/").addServiceResource(JellyResource.class).enableCors().startNonBlocking();
         } catch (Exception e) {
@@ -64,9 +65,10 @@ public class Jelly {
         return jelly;
     }
 
-    private Jelly(String versionId, List<String> hostList) {
+    private Jelly(String versionId, List<String> hostList, JellyConfig config) {
         this.versionId = versionId;
         this.hostList = hostList;
+        this.config = config;
         this.handlerMap = new HashMap<>();
         this.methodMap = new HashMap<>();
         this.clientMap = new HashMap<>();
@@ -75,6 +77,7 @@ public class Jelly {
         for (String hostName : hostList) {
             this.clientMap.put(hostName, getClient(hostName));
         }
+        this.config.put("versionId", versionId);
     }
 
     private String getMethodSignature(Method method) {
@@ -88,6 +91,9 @@ public class Jelly {
 
     @SuppressWarnings("unchecked")
     private <T> T getProxy(T object) {
+        if (object instanceof Jellied) {
+            ((Jellied) object).init(config);
+        }
         final String className = object.getClass().getName();
         handlerMap.put(className, object);
         try {
@@ -107,15 +113,19 @@ public class Jelly {
                 }
                 String methodSignature = getMethodSignature(thisMethod);
                 JellyClient client = getCachedClient(className, methodSignature);
-                Response<RemoteResponse> response = client.call(new RemoteCall(className, methodSignature, argList)).execute();
-                RemoteResponse body = response.body();
-                if (body != null) {
-                    if (body.getException() != null) {
-                        throw (Throwable) gson.fromJson(body.getException(), getClass().getClassLoader().loadClass(body.getExceptionClassName()));
+                if (client != null) {
+                    Response<RemoteResponse> response = client.call(new RemoteCall(versionId, className, methodSignature, argList)).execute();
+                    RemoteResponse body = response.body();
+                    if (body != null) {
+                        if (body.getException() != null) {
+                            throw (Throwable) gson.fromJson(body.getException(), getClass().getClassLoader().loadClass(body.getExceptionClassName()));
+                        }
+                        return gson.fromJson(body.getResponse(), proceed.getReturnType());
+                    } else {
+                        throw new IllegalStateException("Unable to make remote call");
                     }
-                    return gson.fromJson(body.getResponse(), proceed.getReturnType());
                 } else {
-                    throw new IllegalStateException("Unable to make remote call");
+                    return proceed.invoke(self, args);
                 }
             });
         } catch (NoSuchMethodException | IllegalAccessException | InstantiationException | InvocationTargetException e) {
@@ -158,18 +168,24 @@ public class Jelly {
 
     private RemoteResponse internalCall(RemoteCall call) {
         try {
-            if (handlerMap.containsKey(call.getClassName())) {
-                Object handler = handlerMap.get(call.getClassName());
-                Method method = methodMap.get(call.getMethodName());
-                Object[] args = new Object[call.getArgs().size()];
-                for (int index = 0; index < method.getParameterCount(); index++) {
-                    String arg = call.getArgs().get(index);
-                    args[index] = gson.fromJson(arg, method.getParameterTypes()[index]);
+            if (!handlerMap.containsKey(call.getClassName())) {
+                try {
+                    this.getProxy(getClass().getClassLoader().loadClass(call.getClassName()).getConstructor(null).newInstance());
+                } catch (ClassNotFoundException | NoSuchMethodException | InstantiationException | InvocationTargetException e) {
+                    return new RemoteResponse(null, gson.toJson(new IllegalArgumentException("Unable to find/create handler for " + call, e)), IllegalArgumentException.class.getName());
                 }
-                return invoke(method, handler, args);
-            } else {
-                return new RemoteResponse(null, gson.toJson(new IllegalArgumentException("Unable to find handler for " + call)), IllegalAccessException.class.getName());
+                if (!handlerMap.containsKey(call.getClassName())) {
+                    return new RemoteResponse(null, gson.toJson(new IllegalArgumentException("Unable to find/create handler for " + call)), IllegalArgumentException.class.getName());
+                }
             }
+            Object handler = handlerMap.get(call.getClassName());
+            Method method = methodMap.get(call.getMethodName());
+            Object[] args = new Object[call.getArgs().size()];
+            for (int index = 0; index < method.getParameterCount(); index++) {
+                String arg = call.getArgs().get(index);
+                args[index] = gson.fromJson(arg, method.getParameterTypes()[index]);
+            }
+            return invoke(method, handler, args);
         } catch (IllegalAccessException e) {
             throw new IllegalArgumentException("Some very bad mojo here", e);
         }
@@ -179,7 +195,7 @@ public class Jelly {
         try {
             return new RemoteResponse(gson.toJson(method.invoke(handler, args)), null, null);
         } catch (InvocationTargetException e) {
-            LOG.error("Exception throw by underlying object", e);
+            LOG.error("Exception thrown by underlying object", e);
             Throwable cause = e.getCause();
             return new RemoteResponse(null, gson.toJson(cause), cause.getClass().getName());
         }

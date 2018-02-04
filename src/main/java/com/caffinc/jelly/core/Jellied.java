@@ -5,4 +5,8 @@ public interface Jellied {
     default <T> T getJelliedObject() {
         return (T) Jelly.build(this);
     }
+
+    default void init(JellyConfig config) {
+        // Do nothing
+    }
 }

@@ -1,4 +1,6 @@
 package com.caffinc.jelly.core;
 
-public class JellyConfig {
+import java.util.LinkedHashMap;
+
+public class JellyConfig extends LinkedHashMap<String, Object> {
 }
